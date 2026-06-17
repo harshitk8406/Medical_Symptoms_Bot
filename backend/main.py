@@ -1,4 +1,6 @@
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from groq import Groq
@@ -20,7 +22,7 @@ client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 class SymptomInput(BaseModel):
     symptoms: str
-    model: str = 'llama3-8b-8192'
+    model: str = 'llama-3.1-8b-instant'
 
 @app.post('/analyze')
 def analyze(symptoms: SymptomInput):
@@ -32,17 +34,20 @@ def analyze(symptoms: SymptomInput):
 
     try:
         chat_completion = client.chat.completions.create(
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt,
-                }
-            ],
+            messages=[{"role": "user", "content": prompt}],
             model=symptoms.model,
         )
-
         output = chat_completion.choices[0].message.content
         return {'response': output.strip()}
-
     except Exception as e:
         return {'error': str(e)}
+
+# Serve React frontend (built static files)
+build_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend", "build")
+
+if os.path.exists(build_path):
+    app.mount("/static", StaticFiles(directory=os.path.join(build_path, "static")), name="static-assets")
+
+    @app.get("/{full_path:path}")
+    def serve_react(full_path: str):
+        return FileResponse(os.path.join(build_path, "index.html"))
